@@ -23,6 +23,8 @@ services:
       JWT_SECRET: dev-local-jwt-secret
       ENCRYPTION_KEY: dev-local-encryption-key
       JWT_EXPIRY_HOURS: 12
+      RABBITMQ_URL: amqp://gym:gym@rabbitmq:5672/%2F
+      SERVICE_TOKEN: dev-service-token
     depends_on:
       - auth-db
       - rabbitmq
@@ -39,6 +41,10 @@ services:
     environment:
       DATABASE_URL: postgresql://tournament_user:tournament_pass@tournament-db:5432/tournament_db
       PORT: 8003
+      JWT_SECRET: dev-local-jwt-secret
+      AUTH_SERVICE_URL: http://auth-service:8001
+      RABBITMQ_URL: amqp://gym:gym@rabbitmq:5672/%2F
+      SERVICE_TOKEN: dev-service-token
     depends_on:
       - tournament-db
       - rabbitmq

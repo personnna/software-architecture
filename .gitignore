@@ -2,3 +2,5 @@ __pycache__/
 *.pyc 
 tournament.db 
 .DS_Store
+
+.idea/
