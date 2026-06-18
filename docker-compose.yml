@@ -1,4 +1,23 @@
 services:
+  api-gateway:
+    build: ./services/api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      TOURNAMENT_SERVICE_URL: http://tournament-service:8003
+    depends_on:
+      - auth-service
+      - tournament-service
+    volumes:
+      - ./static:/app/static:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   rabbitmq:
     image: rabbitmq:3-management
     ports:
