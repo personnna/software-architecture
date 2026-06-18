@@ -1,4 +1,18 @@
 services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: gym
+      RABBITMQ_DEFAULT_PASS: gym
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   auth-service:
     build: ./services/auth-service
     ports:
@@ -11,6 +25,7 @@ services:
       JWT_EXPIRY_HOURS: 12
     depends_on:
       - auth-db
+      - rabbitmq
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz')"]
       interval: 30s
@@ -26,6 +41,7 @@ services:
       PORT: 8003
     depends_on:
       - tournament-db
+      - rabbitmq
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/healthz')"]
       interval: 30s
