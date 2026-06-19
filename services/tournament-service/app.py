@@ -220,6 +220,7 @@ def healthz():
 
 
 @app.route("/tournaments", methods=["POST"])
+@auth_required("admin", "trainer")
 def create_tournament():
     data = request.get_json(force=True) or {}
     name = data.get("name")
@@ -255,6 +256,7 @@ def create_tournament():
 
 
 @app.route("/tournaments", methods=["GET"])
+@auth_required()
 def list_tournaments():
     limit = min(int(request.args.get("limit", 50)), 200)
     offset = int(request.args.get("offset", 0))
@@ -266,12 +268,14 @@ def list_tournaments():
 
 
 @app.route("/tournaments/<tournament_id>", methods=["GET"])
+@auth_required()
 def get_tournament(tournament_id):
     t = Tournament.query.get_or_404(tournament_id)
     return jsonify(t.to_dict()), 200
 
 
 @app.route("/tournaments/<tournament_id>/participants", methods=["POST"])
+@auth_required("admin", "trainer")
 def add_participant(tournament_id):
     Tournament.query.get_or_404(tournament_id)
     data = request.get_json(force=True) or {}
@@ -286,6 +290,7 @@ def add_participant(tournament_id):
 
 
 @app.route("/tournaments/<tournament_id>/participants", methods=["GET"])
+@auth_required()
 def list_participants(tournament_id):
     Tournament.query.get_or_404(tournament_id)
     limit = min(int(request.args.get("limit", 50)), 200)
@@ -298,6 +303,7 @@ def list_participants(tournament_id):
 
 
 @app.route("/tournaments/<tournament_id>/generate-bracket", methods=["POST"])
+@auth_required("admin", "trainer")
 def generate_bracket(tournament_id):
     t = Tournament.query.get_or_404(tournament_id)
 
@@ -346,6 +352,7 @@ def generate_bracket(tournament_id):
 
 
 @app.route("/tournaments/<tournament_id>/bracket", methods=["GET"])
+@auth_required()
 def get_bracket(tournament_id):
     Tournament.query.get_or_404(tournament_id)
     matches = Match.query.filter_by(tournament_id=tournament_id).order_by(
@@ -355,6 +362,7 @@ def get_bracket(tournament_id):
 
 
 @app.route("/matches/<match_id>/schedule", methods=["POST"])
+@auth_required("admin", "trainer")
 def schedule_match(match_id):
     m = Match.query.get_or_404(match_id)
     data = request.get_json(force=True) or {}
@@ -369,6 +377,7 @@ def schedule_match(match_id):
 
 
 @app.route("/matches/<match_id>/score", methods=["POST"])
+@auth_required("admin", "trainer")
 def submit_score(match_id):
     m = Match.query.get_or_404(match_id)
 
