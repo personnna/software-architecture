@@ -253,6 +253,16 @@ def create_tournament():
     )
     db.session.add(t)
     db.session.commit()
+    publish_event(
+        "tournament.created",
+        {
+            "tournament_id": t.id,
+            "name": t.name,
+            "sport": t.sport,
+            "status": t.status,
+            "created_by": getattr(g, "current_user_id", None),
+        },
+    )
     return jsonify(t.to_dict()), 201
 
 
