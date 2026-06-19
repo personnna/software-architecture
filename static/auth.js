@@ -24,6 +24,8 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
   }
 
   token = data.token;
+  localStorage.setItem("access_token", token);
+  localStorage.setItem("current_user_role", data.user.role);
   document.getElementById("loginCard").style.display = "none";
   document.getElementById("usersCard").style.display = "block";
   loadUsers();
@@ -31,6 +33,8 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
 
 document.getElementById("logoutBtn").addEventListener("click", () => {
   token = null;
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("current_user_role");
   document.getElementById("usersCard").style.display = "none";
   document.getElementById("loginCard").style.display = "block";
 });
