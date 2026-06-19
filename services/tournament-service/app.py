@@ -12,8 +12,10 @@ import math
 import time
 import uuid
 from datetime import datetime
+from functools import wraps
 
-from flask import Flask, request, jsonify
+import jwt
+from flask import Flask, request, jsonify, g
 from flask_sqlalchemy import SQLAlchemy
 
 from bracket import bracket_size, total_rounds, first_round_pairings
@@ -28,6 +30,46 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
+JWT_SECRET = os.environ.get("JWT_SECRET", "dev-insecure-jwt-secret-change-me")
+JWT_ALGORITHM = "HS256"
+
+
+# ---------------------------------------------------------------------------
+# JWT / RBAC helpers
+# ---------------------------------------------------------------------------
+def _decode_bearer_token():
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None, ("missing or malformed Authorization header", 401)
+
+    token = header.split(" ", 1)[1].strip()
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]), None
+    except jwt.ExpiredSignatureError:
+        return None, ("token has expired", 401)
+    except jwt.InvalidTokenError:
+        return None, ("invalid token", 401)
+
+
+def auth_required(*allowed_roles):
+    """Validate the shared auth-service JWT and optionally enforce roles."""
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            payload, error = _decode_bearer_token()
+            if error:
+                message, status = error
+                return jsonify({"error": message}), status
+
+            g.current_user_id = payload.get("sub")
+            g.current_user_role = payload.get("role", "member")
+
+            if allowed_roles and g.current_user_role not in allowed_roles:
+                return jsonify({"error": "forbidden: insufficient role"}), 403
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 # ---------------------------------------------------------------------------
