@@ -19,6 +19,7 @@ from flask import Flask, request, jsonify, g
 from flask_sqlalchemy import SQLAlchemy
 
 from bracket import bracket_size, total_rounds, first_round_pairings
+from event_publisher import publish_event
 
 app = Flask(__name__)
 
