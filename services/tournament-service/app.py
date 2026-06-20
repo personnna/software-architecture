@@ -453,6 +453,7 @@ def submit_score(match_id):
         m.score_a = score_a
         m.score_b = score_b
         m.winner_id = m.participant_a_id if score_a > score_b else m.participant_b_id
+        loser_id = m.participant_b_id if m.winner_id == m.participant_a_id else m.participant_a_id
         m.status = "finished"
         db.session.add(m)
         advance_winner(m.tournament_id, m)
@@ -461,6 +462,21 @@ def submit_score(match_id):
     except Exception:
         db.session.rollback()
         raise
+
+    publish_event(
+        "tournament.match_result_recorded",
+        {
+            "tournament_id": m.tournament_id,
+            "match_id": m.id,
+            "round": m.round_number,
+            "slot": m.slot,
+            "winner_id": m.winner_id,
+            "loser_id": loser_id,
+            "score_a": m.score_a,
+            "score_b": m.score_b,
+            "recorded_by": getattr(g, "current_user_id", None),
+        },
+    )
 
     return jsonify(m.to_dict()), 200
 
