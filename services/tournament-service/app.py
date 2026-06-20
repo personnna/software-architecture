@@ -100,11 +100,18 @@ class Tournament(db.Model):
 class Participant(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tournament_id = db.Column(db.String(36), db.ForeignKey("tournament.id"), nullable=False)
+    user_id = db.Column(db.String(36), nullable=True)
     name = db.Column(db.String(120), nullable=False)
     seed = db.Column(db.Integer, nullable=True)
 
     def to_dict(self):
-        return {"id": self.id, "tournament_id": self.tournament_id, "name": self.name, "seed": self.seed}
+        return {
+            "id": self.id,
+            "tournament_id": self.tournament_id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "seed": self.seed,
+        }
 
 
 class Match(db.Model):
@@ -294,9 +301,24 @@ def add_participant(tournament_id):
     if not name:
         return jsonify({"error": "name is required"}), 400
 
-    p = Participant(tournament_id=tournament_id, name=name, seed=data.get("seed"))
+    p = Participant(
+        tournament_id=tournament_id,
+        user_id=data.get("user_id"),
+        name=name,
+        seed=data.get("seed"),
+    )
     db.session.add(p)
     db.session.commit()
+    publish_event(
+        "tournament.participant_added",
+        {
+            "tournament_id": tournament_id,
+            "participant_id": p.id,
+            "user_id": p.user_id,
+            "name": p.name,
+            "added_by": getattr(g, "current_user_id", None),
+        },
+    )
     return jsonify(p.to_dict()), 201
 
 
