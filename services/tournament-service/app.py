@@ -381,6 +381,15 @@ def generate_bracket(tournament_id):
     all_matches = Match.query.filter_by(tournament_id=tournament_id).order_by(
         Match.round_number, Match.slot
     ).all()
+    publish_event(
+        "tournament.bracket_generated",
+        {
+            "tournament_id": tournament_id,
+            "rounds": total_rounds(len(participant_ids)),
+            "match_count": len(all_matches),
+            "generated_by": getattr(g, "current_user_id", None),
+        },
+    )
     return jsonify([m.to_dict() for m in all_matches]), 201
 
 
