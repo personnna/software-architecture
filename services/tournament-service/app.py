@@ -415,6 +415,17 @@ def schedule_match(match_id):
     m.scheduled_at = datetime.fromisoformat(scheduled_at)
     m.status = "scheduled"
     db.session.commit()
+    publish_event(
+        "tournament.match_scheduled",
+        {
+            "tournament_id": m.tournament_id,
+            "match_id": m.id,
+            "round": m.round_number,
+            "slot": m.slot,
+            "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None,
+            "scheduled_by": getattr(g, "current_user_id", None),
+        },
+    )
     return jsonify(m.to_dict()), 200
 
 
