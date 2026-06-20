@@ -477,6 +477,17 @@ def submit_score(match_id):
             "recorded_by": getattr(g, "current_user_id", None),
         },
     )
+    tournament = Tournament.query.get(m.tournament_id)
+    if tournament and tournament.status == "finished":
+        publish_event(
+            "tournament.completed",
+            {
+                "tournament_id": tournament.id,
+                "name": tournament.name,
+                "champion_participant_id": m.winner_id,
+                "completed_by": getattr(g, "current_user_id", None),
+            },
+        )
 
     return jsonify(m.to_dict()), 200
 
