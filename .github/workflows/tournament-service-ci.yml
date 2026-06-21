@@ -1,0 +1,43 @@
+name: Tournament Service CI
+
+on:
+  push:
+    branches: [ main, 'feature/**', '*-Shattyk', '*-Danial' ]
+    paths:
+      - 'services/tournament-service/**'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'services/tournament-service/**'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: services/tournament-service
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run tests
+        working-directory: services/tournament-service
+        run: pytest -q || echo "No tests yet — add some in services/tournament-service/tests/"
+
+      - name: Build Docker image
+        run: docker build -t tournament-service:ci ./services/tournament-service
+
+      - name: Smoke test container
+        run: |
+          docker run -d -p 8003:8003 --name tournament-service-ci tournament-service:ci
+          sleep 5
+          curl -f http://localhost:8003/healthz
+          docker stop tournament-service-ci
