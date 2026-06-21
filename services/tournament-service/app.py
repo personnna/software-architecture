@@ -226,6 +226,14 @@ def generate_bracket(tournament_id):
 
     for m in matches:
         db.session.add(m)
+    db.session.commit()
+
+    # Push bye winners into the next round immediately, since byes never
+    # go through the /score endpoint that normally triggers this.
+    byes = [m for m in matches if m.status == "finished" and m.winner_id]
+    for bye in byes:
+        advance_winner(tournament_id, bye)
+    db.session.commit()
 
     t.status = "active"
     db.session.commit()
