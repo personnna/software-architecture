@@ -14,4 +14,4 @@ EXPOSE 8003
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
     CMD python -c "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8003/healthz').status==200 else sys.exit(1)"
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8003", "--workers", "2", "app:app"]
+CMD ["gunicorn", "--preload", "--bind", "0.0.0.0:8003", "--workers", "2", "app:app"]

@@ -9,6 +9,7 @@ microservices architecture.
 """
 import os
 import math
+import time
 import uuid
 from datetime import datetime
 
@@ -295,8 +296,26 @@ def submit_score(match_id):
     return jsonify(m.to_dict()), 200
 
 
-with app.app_context():
-    db.create_all()
+def _init_db_with_retry(max_attempts=10, delay_seconds=2):
+    """
+    Postgres can take a few seconds to finish starting up, even after its
+    container is technically running. Retrying here avoids a crash-on-boot
+    race condition when this service starts before the database is ready
+    to accept connections (a very common issue in Docker Compose).
+    """
+    for attempt in range(1, max_attempts + 1):
+        try:
+            with app.app_context():
+                db.create_all()
+            return
+        except Exception as e:
+            if attempt == max_attempts:
+                raise
+            print(f"Database not ready yet (attempt {attempt}/{max_attempts}): {e}")
+            time.sleep(delay_seconds)
+
+
+_init_db_with_retry()
 
 
 if __name__ == "__main__":

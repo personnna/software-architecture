@@ -1,0 +1,27 @@
+services:
+  tournament-service:
+    build: ./services/tournament-service
+    ports:
+      - "8003:8003"
+    environment:
+      DATABASE_URL: postgresql://tournament_user:tournament_pass@tournament-db:5432/tournament_db
+      PORT: 8003
+    depends_on:
+      - tournament-db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  tournament-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: tournament_user
+      POSTGRES_PASSWORD: tournament_pass
+      POSTGRES_DB: tournament_db
+    volumes:
+      - tournament_db_data:/var/lib/postgresql/data
+
+volumes:
+  tournament_db_data:
