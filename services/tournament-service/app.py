@@ -11,10 +11,12 @@ import os
 import math
 import time
 import uuid
+import logging
 from datetime import datetime
 from functools import wraps
 
 import jwt
+import requests
 from flask import Flask, request, jsonify, g
 from flask_sqlalchemy import SQLAlchemy
 
@@ -34,6 +36,9 @@ db = SQLAlchemy(app)
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-insecure-jwt-secret-change-me")
 JWT_ALGORITHM = "HS256"
+AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://auth-service:8001")
+SERVICE_TOKEN = os.environ.get("SERVICE_TOKEN", "dev-service-token")
+LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +222,47 @@ def maybe_finish_tournament(tournament_id):
         if t and t.status != "finished":
             t.status = "finished"
             db.session.add(t)
+
+
+def _participant_user_id(participant_id):
+    participant = Participant.query.get(participant_id)
+    return participant.user_id if participant else None
+
+
+def _patch_user_stats(user_id, payload):
+    if not user_id:
+        return
+    try:
+        requests.patch(
+            f"{AUTH_SERVICE_URL.rstrip('/')}/users/{user_id}/tournament-stats",
+            json=payload,
+            headers={"X-Service-Token": SERVICE_TOKEN},
+            timeout=5,
+        ).raise_for_status()
+    except requests.RequestException as exc:
+        LOGGER.warning("Failed to update tournament stats for user %s: %s", user_id, exc)
+
+
+def update_user_stats_for_match(match, loser_participant_id, tournament_completed=False):
+    winner_user_id = _participant_user_id(match.winner_id)
+    loser_user_id = _participant_user_id(loser_participant_id)
+    _patch_user_stats(
+        winner_user_id,
+        {
+            "played": True,
+            "win": True,
+            "points_delta": 8 if tournament_completed else 3,
+            "champion": tournament_completed,
+        },
+    )
+    _patch_user_stats(
+        loser_user_id,
+        {
+            "played": True,
+            "loss": True,
+            "points_delta": 1,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +509,10 @@ def submit_score(match_id):
         db.session.rollback()
         raise
 
+    tournament = Tournament.query.get(m.tournament_id)
+    tournament_completed = bool(tournament and tournament.status == "finished")
+    update_user_stats_for_match(m, loser_id, tournament_completed=tournament_completed)
+
     publish_event(
         "tournament.match_result_recorded",
         {
@@ -477,8 +527,7 @@ def submit_score(match_id):
             "recorded_by": getattr(g, "current_user_id", None),
         },
     )
-    tournament = Tournament.query.get(m.tournament_id)
-    if tournament and tournament.status == "finished":
+    if tournament_completed:
         publish_event(
             "tournament.completed",
             {
