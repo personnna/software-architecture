@@ -73,6 +73,21 @@ services:
       timeout: 5s
       retries: 3
 
+  notification-service:
+    build: ./services/notification-service
+    ports:
+      - "8004:8004"
+    environment:
+      PORT: 8004
+      RABBITMQ_URL: amqp://gym:gym@rabbitmq:5672/%2F
+    depends_on:
+      - rabbitmq
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   auth-db:
     image: postgres:16
     environment:
