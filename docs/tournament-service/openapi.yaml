@@ -1,0 +1,236 @@
+openapi: 3.0.3
+info:
+  title: Tournament Service API
+  description: >
+    Owns tournament creation, participant registration, bracket generation,
+    match scheduling, and scoring for the GYM IT System.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8003
+    description: Local / direct
+  - url: http://localhost:8000/api/tournaments
+    description: Via API Gateway
+
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: tournament-service }
+
+  /tournaments:
+    get:
+      summary: List all tournaments
+      responses:
+        "200":
+          description: List of tournaments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Tournament" }
+    post:
+      summary: Create a tournament
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, example: "Summer Cup 2026" }
+                sport: { type: string, example: "boxing" }
+                start_date: { type: string, format: date, example: "2026-07-01" }
+                end_date: { type: string, format: date, example: "2026-07-05" }
+      responses:
+        "201":
+          description: Tournament created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tournament" }
+        "400":
+          description: Validation error (missing name, or end_date before start_date)
+
+  /tournaments/{tournamentId}:
+    get:
+      summary: Get a single tournament
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+      responses:
+        "200":
+          description: Tournament details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tournament" }
+        "404":
+          description: Tournament not found
+
+  /tournaments/{tournamentId}/participants:
+    get:
+      summary: List participants in a tournament
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+      responses:
+        "200":
+          description: List of participants
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Participant" }
+    post:
+      summary: Add a participant to a tournament
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, example: "Alice" }
+                seed: { type: integer, nullable: true, example: 1 }
+      responses:
+        "201":
+          description: Participant added
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Participant" }
+
+  /tournaments/{tournamentId}/generate-bracket:
+    post:
+      summary: Generate a single-elimination bracket from current participants
+      description: >
+        Wipes any previous bracket for this tournament and rebuilds it.
+        Automatically advances any "bye" winners (when participant count
+        isn't a power of two) into the next round.
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+      responses:
+        "201":
+          description: Generated list of matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Match" }
+        "400":
+          description: Fewer than 2 participants
+
+  /tournaments/{tournamentId}/bracket:
+    get:
+      summary: Get the current bracket (all matches) for a tournament
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+      responses:
+        "200":
+          description: List of matches
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Match" }
+
+  /matches/{matchId}/schedule:
+    post:
+      summary: Set the scheduled date/time for a match
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scheduled_at]
+              properties:
+                scheduled_at: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Match updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Match" }
+
+  /matches/{matchId}/score:
+    post:
+      summary: Submit a match score; winner automatically advances to the next round
+      parameters:
+        - $ref: "#/components/parameters/MatchId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [score_a, score_b]
+              properties:
+                score_a: { type: integer, example: 10 }
+                score_b: { type: integer, example: 7 }
+      responses:
+        "200":
+          description: Match finished, winner recorded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Match" }
+        "400":
+          description: Missing participant, missing scores, or a tie (not supported)
+
+components:
+  parameters:
+    TournamentId:
+      name: tournamentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MatchId:
+      name: matchId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  schemas:
+    Tournament:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        sport: { type: string }
+        status: { type: string, enum: [draft, active, finished] }
+        start_date: { type: string, format: date, nullable: true }
+        end_date: { type: string, format: date, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    Participant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tournament_id: { type: string, format: uuid }
+        name: { type: string }
+        seed: { type: integer, nullable: true }
+
+    Match:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tournament_id: { type: string, format: uuid }
+        round: { type: integer }
+        slot: { type: integer }
+        participant_a_id: { type: string, format: uuid, nullable: true }
+        participant_b_id: { type: string, format: uuid, nullable: true }
+        score_a: { type: integer, nullable: true }
+        score_b: { type: integer, nullable: true }
+        winner_id: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [pending, scheduled, finished] }
+        scheduled_at: { type: string, format: date-time, nullable: true }

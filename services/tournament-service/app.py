@@ -36,6 +36,8 @@ class Tournament(db.Model):
     name = db.Column(db.String(120), nullable=False)
     sport = db.Column(db.String(60), default="general")
     status = db.Column(db.String(20), default="draft")  # draft -> active -> finished
+    start_date = db.Column(db.Date, nullable=True)
+    end_date = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -43,6 +45,8 @@ class Tournament(db.Model):
             "id": self.id,
             "name": self.name,
             "sport": self.sport,
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None,
             "status": self.status,
             "created_at": self.created_at.isoformat(),
         }
@@ -169,7 +173,29 @@ def create_tournament():
     if not name:
         return jsonify({"error": "name is required"}), 400
 
-    t = Tournament(name=name, sport=data.get("sport", "general"))
+    def parse_date(value):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value).date()
+        except ValueError:
+            raise ValueError(f"Invalid date format: {value} (expected YYYY-MM-DD)")
+
+    try:
+        start_date = parse_date(data.get("start_date"))
+        end_date = parse_date(data.get("end_date"))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+    if start_date and end_date and end_date < start_date:
+        return jsonify({"error": "end_date cannot be before start_date"}), 400
+
+    t = Tournament(
+        name=name,
+        sport=data.get("sport", "general"),
+        start_date=start_date,
+        end_date=end_date,
+    )
     db.session.add(t)
     db.session.commit()
     return jsonify(t.to_dict()), 201

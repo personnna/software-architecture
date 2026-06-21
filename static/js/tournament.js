@@ -6,12 +6,14 @@ let currentTournamentId = null;
 document.getElementById("createBtn").addEventListener("click", async () => {
   const name = document.getElementById("tName").value.trim();
   const sport = document.getElementById("tSport").value;
+  const start_date = document.getElementById("tStartDate").value || null;
+  const end_date = document.getElementById("tEndDate").value || null;
   if (!name) return alert("Please enter a tournament name");
 
   const res = await fetch(API_BASE, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, sport }),
+    body: JSON.stringify({ name, sport, start_date, end_date }),
   });
   const data = await res.json();
   if (!res.ok) return alert(data.error || "Failed to create tournament");

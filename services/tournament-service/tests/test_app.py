@@ -54,3 +54,22 @@ def test_tie_rejected(client):
 
     res = client.post(f"/matches/{match_id}/score", json={"score_a": 5, "score_b": 5})
     assert res.status_code == 400
+
+
+def test_tournament_dates(client):
+    res = client.post(
+        "/tournaments",
+        json={"name": "Dated Cup", "start_date": "2026-07-01", "end_date": "2026-07-05"},
+    )
+    assert res.status_code == 201
+    data = res.get_json()
+    assert data["start_date"] == "2026-07-01"
+    assert data["end_date"] == "2026-07-05"
+
+
+def test_end_date_before_start_date_rejected(client):
+    res = client.post(
+        "/tournaments",
+        json={"name": "Bad Dates", "start_date": "2026-07-05", "end_date": "2026-07-01"},
+    )
+    assert res.status_code == 400
