@@ -1,0 +1,7 @@
+Client
+  ↓
+API Gateway
+  ↓
+Auth | User | Tournament | Notification
+  ↓
+Databases (separate per service)
