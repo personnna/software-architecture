@@ -37,6 +37,7 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 JWT_SECRET = os.environ.get("JWT_SECRET", "dev-insecure-jwt-secret-change-me")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = int(os.environ.get("JWT_EXPIRY_HOURS", "12"))
+SERVICE_TOKEN = os.environ.get("SERVICE_TOKEN", "dev-service-token")
 
 db = SQLAlchemy(app)
 
@@ -95,6 +96,12 @@ class User(db.Model):
     # Stored ENCRYPTED at rest (AES-256-GCM). Never written in plaintext.
     phone_encrypted = db.Column(db.Text, nullable=True)
 
+    tournaments_played = db.Column(db.Integer, default=0)
+    tournament_wins = db.Column(db.Integer, default=0)
+    tournament_losses = db.Column(db.Integer, default=0)
+    tournament_points = db.Column(db.Integer, default=0)
+    tournament_championships = db.Column(db.Integer, default=0)
+
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -115,6 +122,13 @@ class User(db.Model):
             "role": self.role,
             "full_name": self.full_name,
             "is_active": self.is_active,
+            "stats": {
+                "tournaments_played": self.tournaments_played,
+                "wins": self.tournament_wins,
+                "losses": self.tournament_losses,
+                "points": self.tournament_points,
+                "championships": self.tournament_championships,
+            },
             "created_at": self.created_at.isoformat(),
         }
         # Phone is sensitive: only decrypt+return when explicitly requested
@@ -189,6 +203,13 @@ def auth_required(*allowed_roles):
             return fn(*args, **kwargs)
         return wrapper
     return decorator
+
+
+def _service_token_required():
+    token = request.headers.get("X-Service-Token")
+    if not token or token != SERVICE_TOKEN:
+        return jsonify({"error": "forbidden: invalid service token"}), 403
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +361,34 @@ def set_user_status(user_id):
     return jsonify(user.to_dict()), 200
 
 
+@app.route("/users/<user_id>/tournament-stats", methods=["PATCH"])
+def update_tournament_stats(user_id):
+    """
+    Internal endpoint used by tournament-service after match results.
+    Protected by a shared service token instead of user JWT because this is an
+    inter-service write, not an end-user operation.
+    """
+    error = _service_token_required()
+    if error:
+        return error
+
+    user = User.query.get_or_404(user_id)
+    data = request.get_json(force=True) or {}
+
+    if data.get("played"):
+        user.tournaments_played += 1
+    if data.get("win"):
+        user.tournament_wins += 1
+    if data.get("loss"):
+        user.tournament_losses += 1
+    if data.get("champion"):
+        user.tournament_championships += 1
+
+    user.tournament_points += int(data.get("points_delta", 0))
+    db.session.commit()
+    return jsonify(user.to_dict()), 200
+
+
 # ---------------------------------------------------------------------------
 # DB init with retry (handles Postgres not being ready at boot)
 # ---------------------------------------------------------------------------
@@ -360,6 +409,30 @@ def _seed_default_admin():
     db.session.commit()
 
 
+def _migrate_stats_columns():
+    """Small dev migration for existing SQLite/Postgres databases."""
+    try:
+        from sqlalchemy import inspect, text
+
+        inspector = inspect(db.engine)
+        if "user" not in inspector.get_table_names():
+            return
+        existing = {column["name"] for column in inspector.get_columns("user")}
+        columns = {
+            "tournaments_played": "INTEGER DEFAULT 0",
+            "tournament_wins": "INTEGER DEFAULT 0",
+            "tournament_losses": "INTEGER DEFAULT 0",
+            "tournament_points": "INTEGER DEFAULT 0",
+            "tournament_championships": "INTEGER DEFAULT 0",
+        }
+        with db.engine.begin() as conn:
+            for name, ddl in columns.items():
+                if name not in existing:
+                    conn.execute(text(f"ALTER TABLE \"user\" ADD COLUMN {name} {ddl}"))
+    except Exception as e:
+        print(f"Warning: tournament stats migration skipped: {e}")
+
+
 def _init_db_with_retry(max_attempts=10, delay_seconds=2):
     """
     Postgres can take a few seconds to finish starting up, even after its
@@ -371,6 +444,7 @@ def _init_db_with_retry(max_attempts=10, delay_seconds=2):
         try:
             with app.app_context():
                 db.create_all()
+                _migrate_stats_columns()
                 _seed_default_admin()
             return
         except Exception as e:
