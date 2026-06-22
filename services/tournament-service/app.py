@@ -253,6 +253,17 @@ def generate_bracket(tournament_id):
     t = Tournament.query.get_or_404(tournament_id)
 
     # Wipe any previous bracket for this tournament (regeneration support)
+    force = request.args.get("force", "").lower() in ("1", "true", "yes")
+    has_results = (
+        Match.query.filter_by(tournament_id=tournament_id, status="finished")
+        .filter(Match.winner_id.isnot(None))
+        .filter(Match.participant_a_id.isnot(None))
+        .first()
+        is not None
+    )
+    if has_results and not force:
+        return jsonify({"error": "bracket already has played matches; pass ?force=true to wipe"}), 409
+
     Match.query.filter_by(tournament_id=tournament_id).delete()
 
     participants = Participant.query.filter_by(tournament_id=tournament_id).order_by(
