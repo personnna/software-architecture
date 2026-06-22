@@ -112,3 +112,11 @@ def test_regenerate_blocked_after_results(client):
     assert res.status_code == 409
     res = client.post(f"/tournaments/{tid}/generate-bracket?force=true")
     assert res.status_code == 201
+
+
+def test_tournament_list_pagination(client):
+    for i in range(5):
+        client.post("/tournaments", json={"name": f"T{i}"})
+    res = client.get("/tournaments?limit=2")
+    assert res.status_code == 200
+    assert len(res.get_json()) == 2

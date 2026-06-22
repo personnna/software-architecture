@@ -217,7 +217,12 @@ def create_tournament():
 
 @app.route("/tournaments", methods=["GET"])
 def list_tournaments():
-    tournaments = Tournament.query.order_by(Tournament.created_at.desc()).all()
+    limit = min(int(request.args.get("limit", 50)), 200)
+    offset = int(request.args.get("offset", 0))
+    tournaments = (
+        Tournament.query.order_by(Tournament.created_at.desc())
+        .limit(limit).offset(offset).all()
+    )
     return jsonify([t.to_dict() for t in tournaments]), 200
 
 
@@ -244,7 +249,12 @@ def add_participant(tournament_id):
 @app.route("/tournaments/<tournament_id>/participants", methods=["GET"])
 def list_participants(tournament_id):
     Tournament.query.get_or_404(tournament_id)
-    participants = Participant.query.filter_by(tournament_id=tournament_id).all()
+    limit = min(int(request.args.get("limit", 50)), 200)
+    offset = int(request.args.get("offset", 0))
+    participants = (
+        Participant.query.filter_by(tournament_id=tournament_id)
+        .limit(limit).offset(offset).all()
+    )
     return jsonify([p.to_dict() for p in participants]), 200
 
 
