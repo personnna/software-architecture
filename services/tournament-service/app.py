@@ -158,6 +158,20 @@ def advance_winner(tournament_id, finished_match):
     db.session.add(next_match)
 
 
+def maybe_finish_tournament(tournament_id):
+    """If the final match is finished, move the tournament to finished."""
+    last = (
+        Match.query.filter_by(tournament_id=tournament_id)
+        .order_by(Match.round_number.desc(), Match.slot.desc())
+        .first()
+    )
+    if last and last.status == "finished":
+        t = Tournament.query.get(tournament_id)
+        if t and t.status != "finished":
+            t.status = "finished"
+            db.session.add(t)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -320,6 +334,7 @@ def submit_score(match_id):
         m.status = "finished"
         db.session.add(m)
         advance_winner(m.tournament_id, m)
+        maybe_finish_tournament(m.tournament_id)
         db.session.commit()
     except Exception:
         db.session.rollback()
