@@ -73,3 +73,16 @@ def test_end_date_before_start_date_rejected(client):
         json={"name": "Bad Dates", "start_date": "2026-07-05", "end_date": "2026-07-01"},
     )
     assert res.status_code == 400
+
+
+def test_cannot_rescore_finished_match(client):
+    res = client.post("/tournaments", json={"name": "Cup"})
+    tid = res.get_json()["id"]
+    for n in ["A", "B"]:
+        client.post(f"/tournaments/{tid}/participants", json={"name": n})
+    res = client.post(f"/tournaments/{tid}/generate-bracket")
+    match_id = res.get_json()[0]["id"]
+    res = client.post(f"/matches/{match_id}/score", json={"score_a": 10, "score_b": 3})
+    assert res.status_code == 200
+    res = client.post(f"/matches/{match_id}/score", json={"score_a": 5, "score_b": 1})
+    assert res.status_code == 409

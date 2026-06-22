@@ -297,6 +297,10 @@ def schedule_match(match_id):
 @app.route("/matches/<match_id>/score", methods=["POST"])
 def submit_score(match_id):
     m = Match.query.get_or_404(match_id)
+
+    if m.status == "finished":
+        return jsonify({"error": "match already has a final score"}), 409
+
     data = request.get_json(force=True) or {}
 
     if m.participant_a_id is None or m.participant_b_id is None:
