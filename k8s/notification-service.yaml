@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: gym-system
+  labels:
+    app: notification-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+        - name: notification-service
+          image: gym-it-system/notification-service:latest
+          ports:
+            - containerPort: 8004
+          env:
+            - name: RABBITMQ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rabbitmq-secret
+                  key: url
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8004
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8004
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: gym-system
+spec:
+  selector:
+    app: notification-service
+  ports:
+    - port: 8004
+      targetPort: 8004
+  type: ClusterIP
