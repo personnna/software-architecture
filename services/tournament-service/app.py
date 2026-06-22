@@ -16,6 +16,8 @@ from datetime import datetime
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
+from bracket import bracket_size, total_rounds, first_round_pairings
+
 app = Flask(__name__)
 
 # DATABASE_URL is injected by docker-compose / k8s. Falls back to local sqlite
@@ -100,14 +102,9 @@ def generate_single_elimination(tournament_id, participant_ids):
     Pads the field to the next power of two with byes (None) so every
     round divides evenly.
     """
-    n = len(participant_ids)
-    if n < 2:
-        raise ValueError("Need at least 2 participants to generate a bracket")
-
-    size = 2 ** math.ceil(math.log2(n))
-    padded = participant_ids + [None] * (size - n)
-
-    total_rounds = int(math.log2(size))
+    size = bracket_size(len(participant_ids))
+    padded = list(participant_ids) + [None] * (size - len(participant_ids))
+    rounds = total_rounds(len(participant_ids))
     matches = []
 
     # Round 1 from the padded participant list
@@ -130,7 +127,7 @@ def generate_single_elimination(tournament_id, participant_ids):
 
     # Empty placeholder matches for subsequent rounds; filled in as winners advance
     matches_per_round = size // 2
-    for r in range(2, total_rounds + 1):
+    for r in range(2, rounds + 1):
         matches_per_round //= 2
         for slot in range(matches_per_round):
             matches.append(Match(tournament_id=tournament_id, round_number=r, slot=slot, status="pending"))
