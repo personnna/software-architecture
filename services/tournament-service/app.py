@@ -145,7 +145,7 @@ def advance_winner(tournament_id, finished_match):
 
     next_match = Match.query.filter_by(
         tournament_id=tournament_id, round_number=next_round, slot=next_slot
-    ).first()
+    ).with_for_update().first()
     if next_match is None:
         return  # this was the final
 
@@ -313,15 +313,17 @@ def submit_score(match_id):
     if score_a == score_b:
         return jsonify({"error": "ties are not supported in single elimination"}), 400
 
-    m.score_a = score_a
-    m.score_b = score_b
-    m.winner_id = m.participant_a_id if score_a > score_b else m.participant_b_id
-    m.status = "finished"
-    db.session.add(m)
-    db.session.commit()
-
-    advance_winner(m.tournament_id, m)
-    db.session.commit()
+    try:
+        m.score_a = score_a
+        m.score_b = score_b
+        m.winner_id = m.participant_a_id if score_a > score_b else m.participant_b_id
+        m.status = "finished"
+        db.session.add(m)
+        advance_winner(m.tournament_id, m)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        raise
 
     return jsonify(m.to_dict()), 200
 
