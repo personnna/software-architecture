@@ -1,0 +1,266 @@
+openapi: 3.0.3
+info:
+  title: Tournament Service API
+  description: >
+    REST API for the Tournament Service in the GYM IT System.
+    Manages tournaments, participants, bracket generation, and match scoring.
+  version: "1.0.0"
+servers:
+  - url: http://localhost:8003
+    description: Local development server
+
+tags:
+  - name: Health
+  - name: Tournaments
+  - name: Participants
+  - name: Bracket
+  - name: Matches
+
+paths:
+  /healthz:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Returns service health status. Used by Docker/Kubernetes liveness probes.
+      responses:
+        "200":
+          description: Service is healthy
+
+  /tournaments:
+    post:
+      tags: [Tournaments]
+      summary: Create a tournament
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                sport:
+                  type: string
+                  default: general
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+      responses:
+        "201":
+          description: Tournament created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+        "400":
+          description: Invalid input (missing name or bad date format)
+    get:
+      tags: [Tournaments]
+      summary: List tournaments
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: List of tournaments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tournament"
+
+  /tournaments/{tournament_id}:
+    get:
+      tags: [Tournaments]
+      summary: Get a tournament by ID
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+      responses:
+        "200":
+          description: Tournament details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tournament"
+        "404":
+          description: Tournament not found
+
+  /tournaments/{tournament_id}/participants:
+    post:
+      tags: [Participants]
+      summary: Add a participant to a tournament
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                seed:
+                  type: integer
+      responses:
+        "201":
+          description: Participant added
+        "400":
+          description: Missing name
+    get:
+      tags: [Participants]
+      summary: List participants in a tournament
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: List of participants
+
+  /tournaments/{tournament_id}/generate-bracket:
+    post:
+      tags: [Bracket]
+      summary: Generate the single-elimination bracket
+      description: >
+        Generates first-round matches (with byes padded to the next power of two)
+        and empty placeholder matches for subsequent rounds. Blocked with 409 if
+        the bracket already has finished matches, unless `force=true` is passed.
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+        - name: force
+          in: query
+          schema:
+            type: boolean
+          description: If true, wipes existing results and regenerates the bracket.
+      responses:
+        "201":
+          description: Bracket generated, returns first-round matches
+        "404":
+          description: Tournament not found
+        "409":
+          description: Bracket already has played matches; pass force=true to override
+
+  /tournaments/{tournament_id}/bracket:
+    get:
+      tags: [Bracket]
+      summary: Get the full bracket for a tournament
+      parameters:
+        - $ref: "#/components/parameters/TournamentId"
+      responses:
+        "200":
+          description: All matches in the bracket, ordered by round and slot
+
+  /matches/{match_id}/schedule:
+    post:
+      tags: [Matches]
+      summary: Schedule a match
+      parameters:
+        - name: match_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scheduled_at]
+              properties:
+                scheduled_at:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Match scheduled
+        "404":
+          description: Match not found
+
+  /matches/{match_id}/score:
+    post:
+      tags: [Matches]
+      summary: Submit a match score
+      description: >
+        Records the score, determines the winner, advances them to the next round,
+        and auto-finishes the tournament if this was the final match.
+        Rejected with 409 if the match is already finished.
+      parameters:
+        - name: match_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [score_a, score_b]
+              properties:
+                score_a:
+                  type: integer
+                score_b:
+                  type: integer
+      responses:
+        "200":
+          description: Score recorded, match finished
+        "400":
+          description: Invalid score (e.g. tied score not allowed)
+        "404":
+          description: Match not found
+        "409":
+          description: Match already has a final score
+
+components:
+  parameters:
+    TournamentId:
+      name: tournament_id
+      in: path
+      required: true
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 50
+        maximum: 200
+    Offset:
+      name: offset
+      in: query
+      schema:
+        type: integer
+        default: 0
+
+  schemas:
+    Tournament:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        sport:
+          type: string
+        status:
+          type: string
+          enum: [draft, active, finished]
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
