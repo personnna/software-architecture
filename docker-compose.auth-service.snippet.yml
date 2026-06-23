@@ -1,0 +1,41 @@
+# --------------------------------------------------------------------------
+# ADD THESE BLOCKS to the team's existing docker-compose.yml (or
+# docker-compose.microservices.yml), under the top-level `services:` key.
+# Do not replace the whole file — this only adds Yazan's auth-service + its
+# own Postgres instance, matching the "independent database per service"
+# pattern the other services already use.
+# --------------------------------------------------------------------------
+
+  auth-service:
+    build: ./services/auth-service
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://auth_user:auth_pass@auth-db:5432/auth_db
+      PORT: 8001
+      # Security secrets — in production set these via a real secret store,
+      # NOT in a committed file. Shown here only so local dev runs.
+      JWT_SECRET: change-me-in-prod
+      ENCRYPTION_KEY: change-me-in-prod
+      JWT_EXPIRY_HOURS: 12
+    depends_on:
+      - auth-db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  auth-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+      POSTGRES_DB: auth_db
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+
+# --------------------------------------------------------------------------
+# ALSO ADD this under the top-level `volumes:` key:
+# --------------------------------------------------------------------------
+#   auth_db_data:
