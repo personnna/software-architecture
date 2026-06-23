@@ -1,0 +1,44 @@
+﻿Set-Content -Path ".github\workflows\devops-ci.yml" -Encoding UTF8 -Value @'
+# CI Pipeline - DevOps & Scalability
+# Author: Shattyk Kuziyeva
+
+name: DevOps CI
+
+on:
+  push:
+    branches: [ main, feature/shattyk-devops-setup ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Check scripts exist
+        run: |
+          test -f scripts/start-services.sh && echo "start-services.sh OK"
+          test -f scripts/stop-services.sh && echo "stop-services.sh OK"
+          test -f scripts/test-services.sh && echo "test-services.sh OK"
+          test -f scripts/backup-db.sh && echo "backup-db.sh OK"
+
+      - name: Validate k8s manifests
+        run: |
+          test -f k8s/tournament-service.yaml && echo "tournament k8s OK"
+          test -f k8s/tournament-service-hpa.yaml && echo "hpa k8s OK"
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Build tournament service
+        run: docker compose build tournament-service
+
+      - name: Health check
+        run: |
+          docker compose up -d
+          sleep 15
+          curl -f http://localhost:8003/healthz
+          docker compose down
