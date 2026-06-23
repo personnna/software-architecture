@@ -1,37 +1,41 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tournament-service
+  name: auth-service
   labels:
-    app: tournament-service
+    app: auth-service
 spec:
   replicas: 3   # handles 5x growth target without code changes — just bump this
   selector:
     matchLabels:
-      app: tournament-service
+      app: auth-service
   template:
     metadata:
       labels:
-        app: tournament-service
+        app: auth-service
     spec:
       containers:
-        - name: tournament-service
-          image: gym-it-system/tournament-service:latest
+        - name: auth-service
+          image: gym-it-system/auth-service:latest
           ports:
-            - containerPort: 8003
+            - containerPort: 8001
           env:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: tournament-db-secret
+                  name: auth-db-secret
                   key: database-url
+            # Security secrets pulled from a k8s Secret — never hard-coded.
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: auth-app-secret
                   key: jwt-secret
-            - name: AUTH_SERVICE_URL
-              value: "http://auth-service:8001"
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: auth-app-secret
+                  key: encryption-key
             - name: RABBITMQ_URL
               valueFrom:
                 secretKeyRef:
@@ -45,13 +49,13 @@ spec:
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 8003
+              port: 8001
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /healthz
-              port: 8003
+              port: 8001
             initialDelaySeconds: 15
             periodSeconds: 20
           resources:
@@ -65,24 +69,24 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: tournament-service
+  name: auth-service
 spec:
   selector:
-    app: tournament-service
+    app: auth-service
   ports:
-    - port: 8003
-      targetPort: 8003
+    - port: 8001
+      targetPort: 8001
   type: ClusterIP
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: tournament-service-hpa
+  name: auth-service-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: tournament-service
+    name: auth-service
   minReplicas: 2
   maxReplicas: 10
   metrics:

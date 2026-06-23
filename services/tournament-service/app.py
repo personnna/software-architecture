@@ -4,19 +4,24 @@ Tournament Service
 Owns: tournament creation, participant registration, bracket generation,
 match scheduling and scoring.
 
-This is Danial's core domain (Tournament Engine) inside the GYM IT System
+This is Mirgali's core domain (Tournament Engine) inside the GYM IT System
 microservices architecture.
 """
 import os
 import math
 import time
 import uuid
+import logging
 from datetime import datetime
+from functools import wraps
 
-from flask import Flask, request, jsonify
+import jwt
+import requests
+from flask import Flask, request, jsonify, g
 from flask_sqlalchemy import SQLAlchemy
 
 from bracket import bracket_size, total_rounds, first_round_pairings
+from event_publisher import publish_event
 
 app = Flask(__name__)
 
@@ -28,6 +33,49 @@ app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+
+JWT_SECRET = os.environ.get("JWT_SECRET", "dev-insecure-jwt-secret-change-me")
+JWT_ALGORITHM = "HS256"
+AUTH_SERVICE_URL = os.environ.get("AUTH_SERVICE_URL", "http://auth-service:8001")
+SERVICE_TOKEN = os.environ.get("SERVICE_TOKEN", "dev-service-token")
+LOGGER = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# JWT / RBAC helpers
+# ---------------------------------------------------------------------------
+def _decode_bearer_token():
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        return None, ("missing or malformed Authorization header", 401)
+
+    token = header.split(" ", 1)[1].strip()
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]), None
+    except jwt.ExpiredSignatureError:
+        return None, ("token has expired", 401)
+    except jwt.InvalidTokenError:
+        return None, ("invalid token", 401)
+
+
+def auth_required(*allowed_roles):
+    """Validate the shared auth-service JWT and optionally enforce roles."""
+    def decorator(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            payload, error = _decode_bearer_token()
+            if error:
+                message, status = error
+                return jsonify({"error": message}), status
+
+            g.current_user_id = payload.get("sub")
+            g.current_user_role = payload.get("role", "member")
+
+            if allowed_roles and g.current_user_role not in allowed_roles:
+                return jsonify({"error": "forbidden: insufficient role"}), 403
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 # ---------------------------------------------------------------------------
@@ -57,11 +105,18 @@ class Tournament(db.Model):
 class Participant(db.Model):
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     tournament_id = db.Column(db.String(36), db.ForeignKey("tournament.id"), nullable=False)
+    user_id = db.Column(db.String(36), nullable=True)
     name = db.Column(db.String(120), nullable=False)
     seed = db.Column(db.Integer, nullable=True)
 
     def to_dict(self):
-        return {"id": self.id, "tournament_id": self.tournament_id, "name": self.name, "seed": self.seed}
+        return {
+            "id": self.id,
+            "tournament_id": self.tournament_id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "seed": self.seed,
+        }
 
 
 class Match(db.Model):
@@ -169,6 +224,47 @@ def maybe_finish_tournament(tournament_id):
             db.session.add(t)
 
 
+def _participant_user_id(participant_id):
+    participant = Participant.query.get(participant_id)
+    return participant.user_id if participant else None
+
+
+def _patch_user_stats(user_id, payload):
+    if not user_id:
+        return
+    try:
+        requests.patch(
+            f"{AUTH_SERVICE_URL.rstrip('/')}/users/{user_id}/tournament-stats",
+            json=payload,
+            headers={"X-Service-Token": SERVICE_TOKEN},
+            timeout=5,
+        ).raise_for_status()
+    except requests.RequestException as exc:
+        LOGGER.warning("Failed to update tournament stats for user %s: %s", user_id, exc)
+
+
+def update_user_stats_for_match(match, loser_participant_id, tournament_completed=False):
+    winner_user_id = _participant_user_id(match.winner_id)
+    loser_user_id = _participant_user_id(loser_participant_id)
+    _patch_user_stats(
+        winner_user_id,
+        {
+            "played": True,
+            "win": True,
+            "points_delta": 8 if tournament_completed else 3,
+            "champion": tournament_completed,
+        },
+    )
+    _patch_user_stats(
+        loser_user_id,
+        {
+            "played": True,
+            "loss": True,
+            "points_delta": 1,
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -178,6 +274,7 @@ def healthz():
 
 
 @app.route("/tournaments", methods=["POST"])
+@auth_required("admin", "trainer")
 def create_tournament():
     data = request.get_json(force=True) or {}
     name = data.get("name")
@@ -209,10 +306,21 @@ def create_tournament():
     )
     db.session.add(t)
     db.session.commit()
+    publish_event(
+        "tournament.created",
+        {
+            "tournament_id": t.id,
+            "name": t.name,
+            "sport": t.sport,
+            "status": t.status,
+            "created_by": getattr(g, "current_user_id", None),
+        },
+    )
     return jsonify(t.to_dict()), 201
 
 
 @app.route("/tournaments", methods=["GET"])
+@auth_required()
 def list_tournaments():
     limit = min(int(request.args.get("limit", 50)), 200)
     offset = int(request.args.get("offset", 0))
@@ -224,12 +332,14 @@ def list_tournaments():
 
 
 @app.route("/tournaments/<tournament_id>", methods=["GET"])
+@auth_required()
 def get_tournament(tournament_id):
     t = Tournament.query.get_or_404(tournament_id)
     return jsonify(t.to_dict()), 200
 
 
 @app.route("/tournaments/<tournament_id>/participants", methods=["POST"])
+@auth_required("admin", "trainer")
 def add_participant(tournament_id):
     Tournament.query.get_or_404(tournament_id)
     data = request.get_json(force=True) or {}
@@ -237,13 +347,29 @@ def add_participant(tournament_id):
     if not name:
         return jsonify({"error": "name is required"}), 400
 
-    p = Participant(tournament_id=tournament_id, name=name, seed=data.get("seed"))
+    p = Participant(
+        tournament_id=tournament_id,
+        user_id=data.get("user_id"),
+        name=name,
+        seed=data.get("seed"),
+    )
     db.session.add(p)
     db.session.commit()
+    publish_event(
+        "tournament.participant_added",
+        {
+            "tournament_id": tournament_id,
+            "participant_id": p.id,
+            "user_id": p.user_id,
+            "name": p.name,
+            "added_by": getattr(g, "current_user_id", None),
+        },
+    )
     return jsonify(p.to_dict()), 201
 
 
 @app.route("/tournaments/<tournament_id>/participants", methods=["GET"])
+@auth_required()
 def list_participants(tournament_id):
     Tournament.query.get_or_404(tournament_id)
     limit = min(int(request.args.get("limit", 50)), 200)
@@ -256,6 +382,7 @@ def list_participants(tournament_id):
 
 
 @app.route("/tournaments/<tournament_id>/generate-bracket", methods=["POST"])
+@auth_required("admin", "trainer")
 def generate_bracket(tournament_id):
     t = Tournament.query.get_or_404(tournament_id)
 
@@ -300,10 +427,20 @@ def generate_bracket(tournament_id):
     all_matches = Match.query.filter_by(tournament_id=tournament_id).order_by(
         Match.round_number, Match.slot
     ).all()
+    publish_event(
+        "tournament.bracket_generated",
+        {
+            "tournament_id": tournament_id,
+            "rounds": total_rounds(len(participant_ids)),
+            "match_count": len(all_matches),
+            "generated_by": getattr(g, "current_user_id", None),
+        },
+    )
     return jsonify([m.to_dict() for m in all_matches]), 201
 
 
 @app.route("/tournaments/<tournament_id>/bracket", methods=["GET"])
+@auth_required()
 def get_bracket(tournament_id):
     Tournament.query.get_or_404(tournament_id)
     matches = Match.query.filter_by(tournament_id=tournament_id).order_by(
@@ -313,6 +450,7 @@ def get_bracket(tournament_id):
 
 
 @app.route("/matches/<match_id>/schedule", methods=["POST"])
+@auth_required("admin", "trainer")
 def schedule_match(match_id):
     m = Match.query.get_or_404(match_id)
     data = request.get_json(force=True) or {}
@@ -323,10 +461,22 @@ def schedule_match(match_id):
     m.scheduled_at = datetime.fromisoformat(scheduled_at)
     m.status = "scheduled"
     db.session.commit()
+    publish_event(
+        "tournament.match_scheduled",
+        {
+            "tournament_id": m.tournament_id,
+            "match_id": m.id,
+            "round": m.round_number,
+            "slot": m.slot,
+            "scheduled_at": m.scheduled_at.isoformat() if m.scheduled_at else None,
+            "scheduled_by": getattr(g, "current_user_id", None),
+        },
+    )
     return jsonify(m.to_dict()), 200
 
 
 @app.route("/matches/<match_id>/score", methods=["POST"])
+@auth_required("admin", "trainer")
 def submit_score(match_id):
     m = Match.query.get_or_404(match_id)
 
@@ -349,6 +499,7 @@ def submit_score(match_id):
         m.score_a = score_a
         m.score_b = score_b
         m.winner_id = m.participant_a_id if score_a > score_b else m.participant_b_id
+        loser_id = m.participant_b_id if m.winner_id == m.participant_a_id else m.participant_a_id
         m.status = "finished"
         db.session.add(m)
         advance_winner(m.tournament_id, m)
@@ -357,6 +508,35 @@ def submit_score(match_id):
     except Exception:
         db.session.rollback()
         raise
+
+    tournament = Tournament.query.get(m.tournament_id)
+    tournament_completed = bool(tournament and tournament.status == "finished")
+    update_user_stats_for_match(m, loser_id, tournament_completed=tournament_completed)
+
+    publish_event(
+        "tournament.match_result_recorded",
+        {
+            "tournament_id": m.tournament_id,
+            "match_id": m.id,
+            "round": m.round_number,
+            "slot": m.slot,
+            "winner_id": m.winner_id,
+            "loser_id": loser_id,
+            "score_a": m.score_a,
+            "score_b": m.score_b,
+            "recorded_by": getattr(g, "current_user_id", None),
+        },
+    )
+    if tournament_completed:
+        publish_event(
+            "tournament.completed",
+            {
+                "tournament_id": tournament.id,
+                "name": tournament.name,
+                "champion_participant_id": m.winner_id,
+                "completed_by": getattr(g, "current_user_id", None),
+            },
+        )
 
     return jsonify(m.to_dict()), 200
 

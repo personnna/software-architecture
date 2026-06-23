@@ -1,6 +1,6 @@
 # Tournament Service — Architecture Documentation
 
-Architectural responsibility: **Scalability & DevOps** (Danial)
+Architectural responsibility: **Scalability & DevOps** (Mirgali)
 Core domain: **Tournament Engine** — brackets, match scheduling, scoring.
 
 This document follows the C4 model (Context → Container → Component) to
@@ -43,6 +43,7 @@ C4Container
   System_Boundary(ts, "Tournament Service") {
     Container(api, "Flask API", "Python / Flask", "REST endpoints for tournaments, participants, matches")
     Container(web, "Tournament Setup UI", "HTML/JS/Bootstrap", "Admin form for creating tournaments and viewing brackets")
+    ContainerQueue(events, "RabbitMQ", "AMQP topic exchange", "Publishes durable tournament lifecycle events")
     ContainerDb(db, "tournament-db", "PostgreSQL 16", "Stores tournaments, participants, matches. Independent per-service database.")
   }
 
@@ -50,6 +51,7 @@ C4Container
 
   Rel(web, api, "HTTP/JSON", "fetch()")
   Rel(api, db, "SQL", "SQLAlchemy")
+  Rel(api, events, "publishes after commit", "AMQP")
   Rel(gateway, api, "HTTP/JSON")
 ```
 
@@ -98,6 +100,7 @@ Addressed via Kubernetes (see `k8s/tournament-service.yaml` and
 | Resource limits | CPU/memory requests & limits set per pod, preventing one noisy pod from starving others |
 | Stateless service | The Flask API itself holds no in-memory state — all state lives in Postgres — so any replica can serve any request, enabling safe horizontal scaling |
 | External access | `Ingress` routes `/api/tournaments/*` to the service, consistent with how the API Gateway exposes other services |
+| Async fan-out | RabbitMQ carries tournament events to notification/profile projections without coupling them to the scoring request |
 
 ## Quality Attribute: Fault Tolerance (DevOps angle)
 
@@ -106,6 +109,7 @@ Addressed via Kubernetes (see `k8s/tournament-service.yaml` and
 | DB connection retry | App retries connecting to Postgres on startup (handles the common race condition where the app container starts before the database is ready) |
 | Gunicorn `--preload` | App/database initialization runs once before forking worker processes, avoiding race conditions between workers during startup |
 | Docker healthcheck | Container-level healthcheck independent of Kubernetes, useful for local `docker compose` runs |
+| Broker isolation | RabbitMQ publishing is best-effort with retry/logging; tournament writes do not fail only because async notifications are temporarily down |
 
 ---
 

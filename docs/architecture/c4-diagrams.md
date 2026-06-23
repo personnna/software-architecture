@@ -2,7 +2,9 @@
 
 This document describes the GYM IT System architecture at two C4 levels: **System Context** and **Container**.
 
-> Note: only the **Tournament Service** is implemented today. The API Gateway, Auth Service, User Service, and Notification Service are part of the target architecture but are not yet built.
+> Current implementation includes the API Gateway, Auth Service, Tournament
+> Service, Notification Service skeleton, and RabbitMQ event broker. A separate
+> User Service remains a future extraction from auth/profile concerns.
 
 ---
 
@@ -29,14 +31,14 @@ C4Container
     title Container Diagram - GYM IT System
     Person(user, "Member / Admin", "End user of the system")
     System_Boundary(gym, "GYM IT System") {
-        Container(gateway, "API Gateway", "Flask planned", "Routes requests to backend services. NOT YET IMPLEMENTED.")
+        Container(gateway, "API Gateway", "Flask", "Routes requests to backend services.")
         Container(tournament, "Tournament Service", "Flask, Python 3.11", "Tournaments, participants, brackets, scoring. IMPLEMENTED.")
-        Container(auth, "Auth Service", "Flask planned", "Login, JWT issuance, roles. NOT YET IMPLEMENTED.")
-        Container(userSvc, "User Service", "Flask planned", "Profiles, staff management. NOT YET IMPLEMENTED.")
-        Container(notif, "Notification Service", "Flask planned", "Email/push alerts. NOT YET IMPLEMENTED.")
+        Container(auth, "Auth Service", "Flask, Python 3.11", "Login, JWT issuance, roles, profile stats. IMPLEMENTED.")
+        Container(userSvc, "User Service", "Future service", "Profiles and staff management extraction. NOT YET IMPLEMENTED.")
+        Container(notif, "Notification Service", "Flask, Python 3.11", "Consumes RabbitMQ events. IMPLEMENTED SKELETON.")
+        ContainerQueue(rabbit, "RabbitMQ", "Topic exchange", "Durable domain events")
         ContainerDb(tournamentDb, "Tournament DB", "PostgreSQL 16", "Stores tournaments, participants, matches")
-        ContainerDb(authDb, "Auth DB", "PostgreSQL 16 planned", "Stores users, roles, credentials")
-        Container(cache, "Redis Cache", "Redis", "Session/cache layer planned")
+        ContainerDb(authDb, "Auth DB", "PostgreSQL 16", "Stores users, roles, credentials, tournament stats")
     }
     Rel(user, gateway, "HTTPS requests", "REST/JSON")
     Rel(gateway, tournament, "Routes tournament requests", "REST/JSON")
@@ -44,7 +46,9 @@ C4Container
     Rel(gateway, userSvc, "Routes user requests", "REST/JSON")
     Rel(tournament, tournamentDb, "Reads/writes", "SQL")
     Rel(auth, authDb, "Reads/writes", "SQL")
-    Rel(tournament, notif, "Triggers match notifications", "REST/JSON")
+    Rel(tournament, rabbit, "Publishes tournament events", "AMQP")
+    Rel(rabbit, notif, "Delivers durable events", "AMQP")
+    Rel(tournament, auth, "Updates profile stats", "REST/service token")
 ```
 
 ---
@@ -54,19 +58,29 @@ C4Container
 ```mermaid
 flowchart TB
     subgraph current["Current Deployment - docker-compose.yml"]
+        GW["api-gateway :8000"]
+        AS["auth-service :8001"] --> ADB[("auth-db Postgres 16")]
         TS["tournament-service :8003"] --> TDB[("tournament-db Postgres 16")]
+        NSVC["notification-service :8004"]
+        MQ["rabbitmq :5672/:15672"]
+        GW --> AS
+        GW --> TS
+        TS --> MQ
+        MQ --> NSVC
     end
     subgraph k8s["Kubernetes Manifests - k8s/"]
         NS["Namespace: gym-system"]
         AG["api-gateway Deployment - 3 replicas + LoadBalancer"]
         TSK["tournament-service Deployment"]
-        ING["tournament-service Ingress"]
+        RAB["rabbitmq Deployment + ClusterIP"]
+        NOTIF["notification-service Deployment"]
         NS --> AG
         NS --> TSK
-        ING --> TSK
+        NS --> RAB
+        NS --> NOTIF
     end
 ```
 
 **Notes:**
-- `api-gateway.yaml` defines a scalable Deployment (3 replicas) for the API Gateway, ready for when that service is implemented. The Dockerfile in the repo root currently builds the Tournament Service image, since the Gateway code does not exist yet.
+- `api-gateway.yaml` defines a scalable Deployment (3 replicas) for the API Gateway.
 - Replica count (3) was chosen as a representative scalable configuration rather than a literal "5x" multiplier.

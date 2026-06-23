@@ -3,6 +3,14 @@ const API_BASE = "/api/tournaments"; // gateway routes /api/tournaments -> tourn
 
 let currentTournamentId = null;
 
+function authHeaders(extra = {}) {
+  const token = localStorage.getItem("access_token");
+  return {
+    ...extra,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
 document.getElementById("createBtn").addEventListener("click", async () => {
   const name = document.getElementById("tName").value.trim();
   const sport = document.getElementById("tSport").value;
@@ -12,7 +20,7 @@ document.getElementById("createBtn").addEventListener("click", async () => {
 
   const res = await fetch(API_BASE, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ name, sport, start_date, end_date }),
   });
   const data = await res.json();
@@ -28,7 +36,7 @@ document.getElementById("addParticipantBtn").addEventListener("click", async () 
 
   const res = await fetch(`${API_BASE}/${currentTournamentId}/participants`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ name }),
   });
   const data = await res.json();
@@ -46,6 +54,7 @@ document.getElementById("generateBtn").addEventListener("click", async () => {
 
   const res = await fetch(`${API_BASE}/${currentTournamentId}/generate-bracket`, {
     method: "POST",
+    headers: authHeaders(),
   });
   const matches = await res.json();
   if (!res.ok) return alert(matches.error || "Failed to generate bracket");

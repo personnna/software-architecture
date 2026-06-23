@@ -1,4 +1,58 @@
 services:
+  api-gateway:
+    build: ./services/api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      TOURNAMENT_SERVICE_URL: http://tournament-service:8003
+    depends_on:
+      - auth-service
+      - tournament-service
+    volumes:
+      - ./static:/app/static:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: gym
+      RABBITMQ_DEFAULT_PASS: gym
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  auth-service:
+    build: ./services/auth-service
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://auth_user:auth_pass@auth-db:5432/auth_db
+      PORT: 8001
+      JWT_SECRET: dev-local-jwt-secret
+      ENCRYPTION_KEY: dev-local-encryption-key
+      JWT_EXPIRY_HOURS: 12
+      RABBITMQ_URL: amqp://gym:gym@rabbitmq:5672/%2F
+      SERVICE_TOKEN: dev-service-token
+    depends_on:
+      - auth-db
+      - rabbitmq
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   tournament-service:
     build: ./services/tournament-service
     ports:
@@ -6,13 +60,42 @@ services:
     environment:
       DATABASE_URL: postgresql://tournament_user:tournament_pass@tournament-db:5432/tournament_db
       PORT: 8003
+      JWT_SECRET: dev-local-jwt-secret
+      AUTH_SERVICE_URL: http://auth-service:8001
+      RABBITMQ_URL: amqp://gym:gym@rabbitmq:5672/%2F
+      SERVICE_TOKEN: dev-service-token
     depends_on:
       - tournament-db
+      - rabbitmq
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/healthz')"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+  notification-service:
+    build: ./services/notification-service
+    ports:
+      - "8004:8004"
+    environment:
+      PORT: 8004
+      RABBITMQ_URL: amqp://gym:gym@rabbitmq:5672/%2F
+    depends_on:
+      - rabbitmq
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  auth-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+      POSTGRES_DB: auth_db
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
 
   tournament-db:
     image: postgres:16
@@ -24,4 +107,5 @@ services:
       - tournament_db_data:/var/lib/postgresql/data
 
 volumes:
+  auth_db_data:
   tournament_db_data:

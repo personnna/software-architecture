@@ -1,7 +1,7 @@
 # --------------------------------------------------------------------------
 # ADD THESE BLOCKS to the team's existing docker-compose.microservices.yml,
 # under the top-level `services:` key. Do not replace the whole file —
-# this only adds Danial's tournament-service + its own Postgres instance,
+# this only adds Mirgali's tournament-service + its own Postgres instance,
 # matching the "independent database per service" pattern the other
 # services already use.
 # --------------------------------------------------------------------------

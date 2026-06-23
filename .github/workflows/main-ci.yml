@@ -20,20 +20,33 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install shared test tooling
         run: |
           python -m pip install --upgrade pip
           pip install flake8 pytest
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Lint with flake8
         run: |
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         continue-on-error: true
 
-      - name: Run tests
+      - name: Test auth service
+        working-directory: services/auth-service
         run: |
-          pytest --tb=short || echo "No tests found, skipping."
+          pip install -r requirements.txt
+          PYTHONPATH=. pytest tests -q
+
+      - name: Test tournament service
+        working-directory: services/tournament-service
+        run: |
+          pip install -r requirements.txt
+          PYTHONPATH=. pytest tests -q
+
+      - name: Test notification service
+        working-directory: services/notification-service
+        run: |
+          pip install -r requirements.txt
+          PYTHONPATH=. pytest tests -q
 
   docker-build:
     name: Build Docker Image
@@ -48,7 +61,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build API Gateway image
-        run: docker build -t gym-api-gateway:latest .
+        run: docker build -t gym-api-gateway:latest ./services/api-gateway
 
       - name: Verify image exists
         run: |
