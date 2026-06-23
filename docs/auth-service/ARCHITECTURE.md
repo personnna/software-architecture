@@ -138,3 +138,4 @@ Quick summary of endpoints:
 | GET | `/users/{id}` | admin | Get one user |
 | PATCH | `/users/{id}/role` | admin | Change a user's role |
 | PATCH | `/users/{id}/status` | admin | Activate/deactivate an account |
+| PATCH | `/users/{id}/tournament-stats` | service token | Internal tournament stats update from tournament-service |

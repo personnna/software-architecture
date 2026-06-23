@@ -1,6 +1,6 @@
 # Tournament Service — Architecture Documentation
 
-Architectural responsibility: **Scalability & DevOps** (Danial)
+Architectural responsibility: **Scalability & DevOps** (Mirgali)
 Core domain: **Tournament Engine** — brackets, match scheduling, scoring.
 
 This document follows the C4 model (Context → Container → Component) to

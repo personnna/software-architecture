@@ -4,7 +4,7 @@ Tournament Service
 Owns: tournament creation, participant registration, bracket generation,
 match scheduling and scoring.
 
-This is Danial's core domain (Tournament Engine) inside the GYM IT System
+This is Mirgali's core domain (Tournament Engine) inside the GYM IT System
 microservices architecture.
 """
 import os

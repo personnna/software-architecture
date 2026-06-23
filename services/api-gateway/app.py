@@ -13,6 +13,9 @@ SERVICE_ROUTES = {
     "/api/tournaments": os.environ.get(
         "TOURNAMENT_SERVICE_URL", "http://tournament-service:8003"
     ),
+    "/api/matches": os.environ.get(
+        "TOURNAMENT_SERVICE_URL", "http://tournament-service:8003"
+    ),
 }
 
 
@@ -37,6 +40,8 @@ def _target_for(path):
             downstream_path = path[len(prefix) :]
             if prefix == "/api/auth":
                 downstream_prefix = ""
+            elif prefix == "/api/matches":
+                downstream_prefix = "/matches"
             else:
                 downstream_prefix = "/tournaments"
             return service_url, downstream_prefix + (downstream_path or "")

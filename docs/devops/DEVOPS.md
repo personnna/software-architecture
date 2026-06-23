@@ -90,7 +90,13 @@ Kubernetes manages the deployed containers in production.
 
 | `k8s/api-gateway.yaml` | Deploys API Gateway with 3 replicas + LoadBalancer |
 
+| `k8s/auth-service.yaml` | Auth service deployment |
+
 | `k8s/tournament-service.yaml` | Tournament service deployment |
+
+| `k8s/notification-service.yaml` | Notification event consumer deployment |
+
+| `k8s/rabbitmq.yaml` | RabbitMQ broker deployment and ClusterIP service |
 
 | `k8s/tournament-service-ingress.yaml` | External routing for tournament service |
 
@@ -104,7 +110,13 @@ kubectl apply -f k8s/namespace.yaml
 
 kubectl apply -f k8s/api-gateway.yaml
 
+kubectl apply -f k8s/auth-service.yaml
+
+kubectl apply -f k8s/rabbitmq.yaml
+
 kubectl apply -f k8s/tournament-service.yaml
+
+kubectl apply -f k8s/notification-service.yaml
 
 ```
 
@@ -184,9 +196,31 @@ use this to know if a service is alive:
 
 \---
 
+\## 6. RabbitMQ Event Broker
 
 
-\## 6. Summary of My Contributions
+
+RabbitMQ is the primary asynchronous integration technology in this version.
+
+Tournament Service publishes lifecycle events to the durable `gym.events`
+
+topic exchange, and Notification Service consumes from `notification.events`.
+
+
+
+RabbitMQ keeps notification/profile projections decoupled from the core
+
+tournament write path. If the broker is temporarily unavailable, tournament
+
+API requests complete and the publisher logs the failure after retry attempts.
+
+
+
+\---
+
+
+
+\## 7. Summary of My Contributions
 
 
 
@@ -200,7 +234,10 @@ use this to know if a service is alive:
 
 | Kubernetes API Gateway | `k8s/api-gateway.yaml` | 3-replica scalable deployment |
 
+| RabbitMQ | `k8s/rabbitmq.yaml` | Durable event broker for domain events |
+
+| Notification Service | `services/notification-service` | Event consumer for tournament notifications |
+
 | CI Pipeline | `.github/workflows/main-ci.yml` | Automated testing and builds |
 
 | This document | `docs/devops/DEVOPS.md` | DevOps documentation |
-

@@ -1,7 +1,7 @@
 # Implementation Scope — RabbitMQ Microservice Integration
 
 This note captures the repository state before the RabbitMQ integration work.
-It is part of a reconstructed local development history for the Danial role:
+It is part of a reconstructed local development history for the Mirgali role:
 Tournament Engine plus Scalability/DevOps.
 
 ## Implemented Today
@@ -23,7 +23,7 @@ Tournament Engine plus Scalability/DevOps.
 - Tournament write endpoints do not yet enforce JWT/RBAC.
 - Tournament match results are not reflected in user profile/statistics data.
 
-## Danial Scope
+## Mirgali Scope
 
 This work stays inside the Tournament Engine and Scalability/DevOps boundary:
 
