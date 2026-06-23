@@ -1,0 +1,29 @@
+﻿# Horizontal Pod Autoscaler - Tournament Service
+# Author: Shattyk Kuziyeva
+# Scalability responsibility - handles 5x growth
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tournament-service-hpa
+  namespace: gym-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tournament-service
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
